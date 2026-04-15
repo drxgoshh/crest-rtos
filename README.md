@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="crest.png" alt="CREST Logo" width="160"/>
+  <img src="crest.png" alt="CREST Logo" width="320"/>
 </p>
 
 <h1 align="center">CREST</h1>
