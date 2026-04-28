@@ -17,7 +17,6 @@ typedef enum {
 
 /* Task Control Block (TCB) */
 struct TaskControlBlock {
-    uint32_t stackId;                      /* index into stack pool */
     uint8_t *stack_base;                   /* pointer to stack memory (heap) */
     uint32_t stack_size;                   /* size of allocated stack */
     char name[TASK_NAME_MAX_LEN];          /* task name (NUL terminated) */
