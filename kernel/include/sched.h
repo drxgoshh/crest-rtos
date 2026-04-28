@@ -54,4 +54,9 @@ void scheduler_tick(void);
 /* Returns the number of milliseconds elapsed since the scheduler started. */
 uint32_t scheduler_get_tick_count(void);
 
+/* Get the priority of the first ready task (lowest number = highest priority). */
+uint8_t sched_get_first_ready_priority(void);
+
+extern uint8_t g_priority_mask; /* bitmask of priorities with ready tasks */
+
 #endif /* CREST_SCHED_H */

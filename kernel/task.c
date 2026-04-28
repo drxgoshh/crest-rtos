@@ -136,6 +136,7 @@ void task_delay(uint32_t ticks)
     uint32_t pm = enter_critical();
     cur->delay_ticks = ticks;
     cur->state       = TASK_WAITING;
+    g_priority_mask &= ~(1 << cur->priority); /* clear mask bit for this priority */
     exit_critical(pm);
 
     port_trigger_pendsv();

@@ -24,12 +24,25 @@ static struct TaskControlBlock *current_task = NULL;
 /* Millisecond tick counter — incremented by scheduler_tick() on every SysTick. */
 static volatile uint32_t tick_count = 0;
 
+uint8_t g_priority_mask = 0; /* bitmask of priorities with at least one READY task */
+
+
+
+
 /* ------------------------------------------------------------------ */
+
+uint8_t sched_get_first_ready_priority(void)
+{
+    return __builtin_ctz(g_priority_mask); /* find index of least significant set bit */
+}
+
 
 void sched_init(void)
 {
     memset(task_list,  0, sizeof(task_list));
     memset(rr_current, 0, sizeof(rr_current));
+    g_priority_mask = 0;
+
     current_task = NULL;
 }
 
@@ -38,6 +51,7 @@ void sched_add_task(struct TaskControlBlock *tcb)
     uint32_t pm = enter_critical();
     tcb->next = task_list[tcb->priority];
     task_list[tcb->priority] = tcb;
+    g_priority_mask |= (1 << tcb->priority);
     exit_critical(pm);
 }
 
@@ -60,6 +74,12 @@ void sched_remove_task(struct TaskControlBlock *tcb)
         }
         p = &(*p)->next;
     }
+
+    /* If the list is now empty, clear the corresponding bit in the priority mask */
+    if (!task_list[tcb->priority]) {
+        g_priority_mask &= ~(1 << tcb->priority);
+    }
+
     exit_critical(pm);
 }
 
@@ -81,27 +101,23 @@ struct TaskControlBlock *scheduler_get_next(void)
 {
     uint32_t pm = enter_critical();
 
-    for (int pr = 0; pr < MAX_TASK_PRIORITIES; pr++) {
-        struct TaskControlBlock *head = task_list[pr];
-        if (!head) continue;
+    uint8_t pr = sched_get_first_ready_priority(); /* find index of least significant set bit */
 
-        /* Start from the node after the last scheduled one */
-        struct TaskControlBlock *start = rr_current[pr] ? rr_current[pr] : head;
-        struct TaskControlBlock *t = start->next ? start->next : head;
+    if (pr < MAX_TASK_PRIORITIES) {
+        struct TaskControlBlock *t = rr_current[pr];
+        if (!t) t = task_list[pr]; /* start from head if cursor is NULL */
 
-        /* Walk at most the full list once */
-        struct TaskControlBlock *stop = t; /* sentinel: stop when we get back here */
-        while (1) {
+        struct TaskControlBlock *start = t; /* remember where we started */
+        do {
             if (t->state == TASK_READY) {
-                rr_current[pr] = t;
+                rr_current[pr] = t->next ? t->next : task_list[pr];
                 exit_critical(pm);
                 return t;
             }
-            t = t->next ? t->next : head; /* wrap */
-            if (t == stop) break;
-        }
-        /* No READY task at this priority; fall through to next */
+            t = t->next ? t->next : task_list[pr];
+        } while (t != start);
     }
+
 
     exit_critical(pm);
     return NULL;
@@ -136,13 +152,14 @@ uint32_t scheduler_get_tick_count(void)
 void scheduler_tick(void)
 {
     tick_count++;
-    for (int pr = 0; pr < MAX_TASK_PRIORITIES; pr++) {
+    for (uint8_t pr = 0; pr < MAX_TASK_PRIORITIES; pr++) {
         struct TaskControlBlock *t = task_list[pr];
         while (t) {
             uint32_t pm = enter_critical();
             if (t->state == TASK_WAITING && t->delay_ticks > 0) {
                 if (--t->delay_ticks == 0) {
                     t->state = TASK_READY;
+                    g_priority_mask |= (1 << t->priority); /* mask priority has a ready task */
                 }
             }
             exit_critical(pm);
