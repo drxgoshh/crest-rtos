@@ -1,7 +1,11 @@
+/* Bootloader linker script: place the bootloader image at 0x08000000
+ * and reserve 16KB for the bootloader. The rest of flash is for the
+ * main firmware (kernel) at 0x08004000.
+ */
 MEMORY
 {
-    FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 512K /* 512K flash on ARM Cortex-M4 */
-    RAM (rwx) : ORIGIN = 0x20000000, LENGTH = 128K /* 128K RAM on ARM Cortex-M4 */
+    FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 16K /* 16KB bootloader */
+    RAM (rwx) : ORIGIN = 0x20000000, LENGTH = 128K /* 128KB RAM */
 }
 
 _estack = ORIGIN(RAM) + LENGTH(RAM); /* End of RAM, used as initial stack pointer */

@@ -16,6 +16,11 @@ void mutex_init(mutex_t *m)
 void mutex_lock(mutex_t *m)
 {
     uint32_t pm = enter_critical();
+    if(m->owner == scheduler_get_current()){
+        // current task already owns the mutex
+        exit_critical(pm);
+        return;
+    }
     if(m->owner == NULL){
         m->owner = scheduler_get_current();
         exit_critical(pm);

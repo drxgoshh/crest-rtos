@@ -15,7 +15,17 @@ set(CREST_CPU_FLAGS
 )
 
 # Linker script
-set(CREST_LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/boards/stm32f446/link.ld")
+set(CREST_LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/boards/stm32f446/kernel.ld")
+
+# Bootloader-specific linker script and sources
+set(CREST_BOOTLOADER_LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/boards/stm32f446/boot.ld")
+
+set(CREST_BOOTLOADER_SOURCES
+    "${CMAKE_SOURCE_DIR}/boards/stm32f446/boot_startup.c"
+    "${CMAKE_SOURCE_DIR}/boards/stm32f446/bootloader.c"
+    "${CMAKE_SOURCE_DIR}/boards/stm32f446/uart.c"
+    "${CMAKE_SOURCE_DIR}/kernel/libc_stubs.c"
+)
 
 # Board-specific source files (BSP only — no application code)
 set(CREST_BOARD_SOURCES

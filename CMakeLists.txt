@@ -35,6 +35,7 @@ add_library(kernel STATIC
     kernel/mutex.c
     kernel/semaphore.c
     kernel/libc_stubs.c
+    kernel/queue.c
 )
 
 target_include_directories(kernel
@@ -109,6 +110,50 @@ add_custom_target(flash
     COMMAND openocd
         -f interface/stlink.cfg
         -f target/stm32f4x.cfg
-        -c "program ${CMAKE_BINARY_DIR}/crest.bin 0x08000000 verify reset exit"
+        -c "program ${CMAKE_BINARY_DIR}/crest.bin 0x08004000 verify reset exit"
     COMMENT "Flashing ${BOARD} via ST-Link"
 )
+
+
+# ── Bootloader executable (optional) ─────────────────────────────────────────
+if(DEFINED CREST_BOOTLOADER_SOURCES)
+    add_executable(bootloader
+        ${CREST_BOOTLOADER_SOURCES}
+    )
+
+    target_include_directories(bootloader PRIVATE
+        ${CREST_BOARD_INCLUDES}
+        kernel/include
+        arch/${CREST_ARCH}
+    )
+
+    target_compile_options(bootloader PRIVATE
+        -Wall -Wextra -Wno-unused-parameter
+        -ffunction-sections -fdata-sections
+    )
+
+    target_link_options(bootloader PRIVATE
+        -nostdlib -nostartfiles
+        -T${CREST_BOOTLOADER_LINKER_SCRIPT}
+        -Wl,--gc-sections
+        -Wl,-Map=${CMAKE_BINARY_DIR}/bootloader.map
+    )
+
+    target_link_libraries(bootloader PRIVATE crest_cpu)
+
+    add_custom_command(TARGET bootloader POST_BUILD
+        COMMAND ${CMAKE_OBJCOPY} -O binary  $<TARGET_FILE:bootloader> ${CMAKE_BINARY_DIR}/bootloader.bin
+        COMMAND ${CMAKE_OBJCOPY} -O ihex    $<TARGET_FILE:bootloader> ${CMAKE_BINARY_DIR}/bootloader.hex
+        COMMAND ${CMAKE_SIZE}               $<TARGET_FILE:bootloader>
+        COMMENT "Generating bootloader.bin / bootloader.hex"
+    )
+
+    add_custom_target(flash-bootloader
+        DEPENDS bootloader
+        COMMAND openocd
+            -f interface/stlink.cfg
+            -f target/stm32f4x.cfg
+            -c "program ${CMAKE_BINARY_DIR}/bootloader.bin 0x08000000 verify reset exit"
+        COMMENT "Flashing bootloader via ST-Link"
+    )
+endif()
