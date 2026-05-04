@@ -24,8 +24,7 @@ void crest_boot_banner(void) {
     
 }
 
-mutex_t my_mutex; // Example mutex for demonstration
-queue_t my_queue; // Example queue for demonstration
+queue_t* my_queue; // Example queue for demonstration
 
 
 /* Simple blink tasks — they yield to let the scheduler run. */
@@ -52,7 +51,7 @@ static void task2(void *arg) {
 
 int main(void) {
     uart_init();    // Initialize UART for logging
-    queue_init(&my_queue, sizeof(int), 10); // Initialize the queue before use
+    my_queue = queue_create(sizeof(int), 10); // Create and initialize the queue
     crest_boot_banner(); // Print boot banner
     
     task_init(); // Initialize task subsystem

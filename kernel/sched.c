@@ -2,6 +2,7 @@
 #include "isr.h"
 #include <string.h>
 #include <stdint.h>
+#include "queue.h"
 
 /*
  * Per-priority task lists.  All tasks at a given priority live in a
@@ -26,6 +27,7 @@ static volatile uint32_t tick_count = 0;
 
 uint8_t g_priority_mask = 0; /* bitmask of priorities with at least one READY task */
 
+extern queue_t* g_queue_list; /* global list of all queues for cleanup (not implemented) */
 
 
 
@@ -52,6 +54,7 @@ void sched_add_task(struct TaskControlBlock *tcb)
     tcb->next = task_list[tcb->priority];
     task_list[tcb->priority] = tcb;
     g_priority_mask |= (1 << tcb->priority);
+    port_trigger_pendsv();
     exit_critical(pm);
 }
 
@@ -152,6 +155,7 @@ uint32_t scheduler_get_tick_count(void)
 void scheduler_tick(void)
 {
     tick_count++;
+    /* Decrement from TCB list */
     for (uint8_t pr = 0; pr < MAX_TASK_PRIORITIES; pr++) {
         struct TaskControlBlock *t = task_list[pr];
         while (t) {
@@ -166,4 +170,8 @@ void scheduler_tick(void)
             t = t->next;
         }
     }
+
+    /* Decrement from queue wait lists */
+    queue_tick_all();
+
 }

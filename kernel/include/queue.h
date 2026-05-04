@@ -3,21 +3,18 @@
 
 #include <stdint.h>
 #include "task.h"
-#include "mutex.h"
 
-typedef struct {
-    uint32_t item_size;    /* size of each item in bytes */
-    uint32_t size;         /* requested maximum number of items the queue can hold (capacity) */
-    uint32_t slots;        /* internal buffer slots (size + 1) used for ring buffer arithmetic */
-    uint32_t head;         /* index of the head of the queue */
-    uint32_t tail;         /* index of the tail of the queue */
-    void *buffer;          /* pointer to the queue's data buffer */
-    mutex_t mutex;         /* mutex to protect access to the queue */
-} queue_t;
+typedef struct queue queue_t;
+
+
+/**
+ * Create a queue. Allocates memory for the queue's buffer.
+ * Returns 0 on success, -1 on failure.
+ */
+queue_t* queue_create(uint32_t item_size, uint32_t size);
 
 /**
  * Queue initialization. Must be called before using the queue.
- * 
  */
 int queue_init(queue_t *queue, uint32_t item_size, uint32_t size);
 
@@ -25,14 +22,15 @@ int queue_init(queue_t *queue, uint32_t item_size, uint32_t size);
  * Push an item. Returns 0 on success, -1 if the queue is full.
  * 
  */
-int queue_push(queue_t *queue, const void *item);
+int queue_push(queue_t *queue, const void *item, uint32_t timeout_ms);
 
 /**
  * Pop an item. Returns 0 on success, -1 if the queue is empty.
  * The popped item is copied into the provided buffer.
  * 
  */
-int queue_pop(queue_t *queue, void *item);
+int queue_pop(queue_t *queue, void *item, uint32_t timeout_ms);
 
+void queue_tick_all(void);
 
 #endif /* CREST_QUEUE_H */

@@ -15,14 +15,22 @@ typedef enum {
     TASK_SUSPENDED
 } task_state_t;
 
+#define TASK_FLAG_WAITING_SEND (1<<0) /* waiting to send on a full queue */
+#define TASK_FLAG_WAITING_RECV (1<<1) /* waiting to recv on an empty queue */
+
+
 /* Task Control Block (TCB) */
 struct TaskControlBlock {
     uint8_t *stack_base;                   /* pointer to stack memory (heap) */
     uint32_t stack_size;                   /* size of allocated stack */
-    char name[TASK_NAME_MAX_LEN];          /* task name (NUL terminated) */
     uint32_t *stack_pointer;               /* current stack pointer (for context switch) */
+
+    char name[TASK_NAME_MAX_LEN];          /* task name (NUL terminated) */
+    
     task_state_t state;                    /* task state */
     uint32_t priority;                     /* lower = higher priority */
+    uint32_t flags;                        /* task flags */
+
     struct TaskControlBlock *next;         /* singly-linked circular ready list */
     uint32_t delay_ticks;                  /* ticks remaining when blocked */
     void (*task_function)(void*);          /* entry function */
