@@ -12,7 +12,7 @@ struct semaphore{
     struct TaskControlBlock *wait_list; /* tasks blocked in sem_wait() */
 };
 
-semaphore_t *sem_create(int initial_count)
+semaphore_t *z_impl_sem_create(int initial_count)
 {
     semaphore_t *s = (semaphore_t *)malloc(sizeof(semaphore_t));
     if (s == NULL) {
@@ -23,7 +23,7 @@ semaphore_t *sem_create(int initial_count)
     return s;
 }
 
-void sem_take(semaphore_t *s)
+void z_impl_sem_take(semaphore_t *s)
 {
     uint32_t pm = enter_critical();
     if(s->count > 0 ){
@@ -40,7 +40,7 @@ void sem_take(semaphore_t *s)
     return;
 }
 
-void sem_give(semaphore_t *s)
+void z_impl_sem_give(semaphore_t *s)
 {
     uint32_t pm = enter_critical();
     if(s->wait_list != NULL){

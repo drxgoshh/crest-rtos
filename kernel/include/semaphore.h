@@ -1,6 +1,7 @@
 #ifndef CREST_SEMAPHORE_H
 #define CREST_SEMAPHORE_H
 
+#include <stdint.h>
 #include "task.h"
 
 /* Counting semaphore:
@@ -10,13 +11,13 @@
  */
 typedef struct semaphore semaphore_t;
 
-/* Create a new semaphore with `initial_count`. Returns pointer or NULL. */
-semaphore_t *sem_create(int initial_count);
+/* Create a new semaphore with `initial_count`. Returns a handle (KOBJ_INVALID on failure). */
+uint32_t sem_create(int initial_count);
 
 /* Decrement count; block if zero. Must NOT be called from an ISR. */
-void sem_take(semaphore_t *s);
+void sem_take(uint32_t handle);
 
 /* Increment count and wake one waiter. Safe to call from an ISR. */
-void sem_give(semaphore_t *s);
+void sem_give(uint32_t handle);
 
 #endif /* CREST_SEMAPHORE_H */

@@ -8,8 +8,7 @@
 extern void uart_write(const char *s);
 
 /* C helper called from the PendSV assembly wrapper.
- * - input: r0 = pointer to process stack (PSP) after pushing R4-R11
- * - return: r0 = pointer to new process stack (PSP) for the next task (after R4-R11 area)
+ * Saves old SP, picks next task, restores CONTROL.nPRIV, returns new SP.
  */
 uint32_t *port_switch_context(uint32_t *old_sp)
 {
@@ -21,9 +20,6 @@ uint32_t *port_switch_context(uint32_t *old_sp)
 		 * TASK_WAITING — their state must not be overwritten here. */
 		if (cur->state == TASK_RUNNING) cur->state = TASK_READY;
 
-		/* Stack overflow check: the saved SP must still be >= stack_base.
-		 * If it went below, the stack has already overflowed.
-		 * This catches overflows of any size on every context switch. */
 		if ((uintptr_t)cur->stack_pointer < (uintptr_t)cur->stack_base) {
 			stack_overflow_handler(cur); /* prints diagnostic, halts */
 		}
@@ -31,25 +27,27 @@ uint32_t *port_switch_context(uint32_t *old_sp)
 
 	struct TaskControlBlock *next = scheduler_get_next();
 	if (!next) {
-		/* No ready task — should not happen if an idle task is registered.
-		 * Fall back to re-running the current task. */
 		if (cur) { cur->state = TASK_RUNNING; return cur->stack_pointer; }
 		return old_sp;
 	}
 
 	next->state = TASK_RUNNING;
-	/* Configure MPU for the new task's memory regions if enabled. */
 #if PORT_USE_MPU
 	port_mpu_configure_for_task(next);
 #endif
 	scheduler_set_current(next);
+
+	/* Restore privilege level; must be written from handler mode to take
+	 * effect at ERET. */
+	{
+		uint32_t ctrl = 2u;
+		if (next->flags & TASK_FLAG_USER) ctrl |= 1u;
+		__asm volatile ("msr control, %0\n isb" :: "r" (ctrl) : "memory");
+	}
+
 	return next->stack_pointer;
 }
 
-/* Naked PendSV handler: save callee-saved registers, call the C context-switch
- * helper, then restore registers and return to thread mode. This uses a small
- * inline-asm wrapper but keeps the scheduler logic in C.
- */
 void PendSV_Handler(void) __attribute__((naked));
 void PendSV_Handler(void)
 {

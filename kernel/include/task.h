@@ -15,8 +15,8 @@ typedef enum {
     TASK_SUSPENDED
 } task_state_t;
 
-#define TASK_FLAG_WAITING_SEND (1<<0) /* waiting to send on a full queue */
-#define TASK_FLAG_WAITING_RECV (1<<1) /* waiting to recv on an empty queue */
+
+#define TASK_FLAG_USER (1u << 0) /* task should run in unprivileged mode */
 
 
 /* Task Control Block (TCB) */

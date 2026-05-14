@@ -15,6 +15,7 @@ extern void port_trigger_pendsv(void);
 
 /* PendSV handler is implemented in the arch port (context switch code) */
 extern void PendSV_Handler(void);
+extern void SVC_Handler(void);
 
 
 
@@ -148,7 +149,7 @@ __attribute__((section(".isr_vector"))) void (* const vector_table[])(void) = {
     Default_Handler,            /* BusFault                     */
     Default_Handler,            /* UsageFault                   */
     0, 0, 0, 0,                 /* reserved                     */
-    Default_Handler,            /* SVCall                       */
+    SVC_Handler,                /* SVCall                       */
     Default_Handler,            /* DebugMon                     */
     0,                          /* reserved                     */
     PendSV_Handler,

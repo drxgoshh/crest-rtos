@@ -11,7 +11,7 @@ struct mutex {
     struct TaskControlBlock *wait_list; /* singly-linked list of waiting tasks (via ->next) */
 };
 
-mutex_t* mutex_create(void)
+mutex_t* z_impl_mutex_create(void)
 {
     mutex_t *m = (mutex_t *)malloc(sizeof(mutex_t));
     if (m == NULL) {
@@ -22,7 +22,7 @@ mutex_t* mutex_create(void)
     return m;
 }
 
-void mutex_lock(mutex_t *m)
+void z_impl_mutex_lock(mutex_t *m)
 {
     uint32_t pm = enter_critical();
     if(m->owner == scheduler_get_current()){
@@ -44,7 +44,7 @@ void mutex_lock(mutex_t *m)
     return;
 }
 
-void mutex_unlock(mutex_t *m)
+void z_impl_mutex_unlock(mutex_t *m)
 {
     uint32_t pm = enter_critical();
     struct TaskControlBlock *cur = scheduler_get_current();

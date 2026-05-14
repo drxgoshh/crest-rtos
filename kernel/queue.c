@@ -114,7 +114,7 @@ static inline void remove_from_queue_list(queue_t *queue) {
  * Create a queue. Allocates memory for the queue's buffer.
  * Returns 0 on success, -1 on failure.
  */
-queue_t* queue_create(uint32_t item_size, uint32_t size){
+queue_t* z_impl_queue_create(uint32_t item_size, uint32_t size){
     if (item_size == 0 || size == 0) {
         return NULL;
     }
@@ -139,7 +139,7 @@ queue_t* queue_create(uint32_t item_size, uint32_t size){
  * Push an item. Returns 0 on success, -1 if the queue is full.
  * 
  */
-int queue_push(queue_t *queue, const void *item, uint32_t timeout_ms){
+int z_impl_queue_push(queue_t *queue, const void *item, uint32_t timeout_ms){
     while(1){
 
         uint32_t pm =  enter_critical();
@@ -190,7 +190,7 @@ int queue_push(queue_t *queue, const void *item, uint32_t timeout_ms){
  * The popped item is copied into the provided buffer.
  * 
  */
-int queue_pop(queue_t *queue, void *item, uint32_t timeout_ms){
+int z_impl_queue_pop(queue_t *queue, void *item, uint32_t timeout_ms){
     while (1)
     {
         uint32_t pm = enter_critical();

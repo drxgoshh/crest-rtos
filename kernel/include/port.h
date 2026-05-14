@@ -55,4 +55,28 @@ void port_mpu_configure_for_task(struct TaskControlBlock *tcb);
  * Prints task name, SP, stack_base, and halts. Never returns. */
 void stack_overflow_handler(struct TaskControlBlock *tcb) __attribute__((noreturn));
 
+/*
+ * Syscall / privilege interface
+ * ─────────────────────────────
+ * port_syscall_invoke(id, arg0..arg3)
+ *   Emit the architecture syscall instruction (SVC #id on ARM) to elevate
+ *   from unprivileged thread mode to the kernel syscall handler.
+ *   The return value is the value placed by the handler in R0.
+ *
+ * port_set_unprivileged()
+ *   Clear CONTROL.nPRIV = 1 (ARM) so the calling thread drops to user mode.
+ *   Call this once from port_start_first_task / port_switch_context for
+ *   tasks marked TASK_USER, just before the ERET that enters the task.
+ *
+ * port_is_privileged()
+ *   Returns non-zero if the CPU is currently in privileged thread mode.
+ *   Used by syscall stubs to decide whether to trap or call directly.
+ */
+int  port_syscall_invoke(unsigned int id,
+                         unsigned int arg0, unsigned int arg1,
+                         unsigned int arg2, unsigned int arg3);
+void port_set_unprivileged(void);
+int  port_is_privileged(void);
+void k_uart_write(const char *s); /* UART write safe from unprivileged mode */
+
 #endif /* CREST_PORT_H */

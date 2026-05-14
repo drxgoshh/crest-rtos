@@ -43,6 +43,12 @@ SECTIONS
 
     /* Heap: place immediately after .bss; C code reads __heap_start/__heap_end */
     . = ALIGN(8);
+    /* Reserve small user heap at start of kernel heap for unprivileged tasks */
+    __user_heap_start = .;
+    . = . + 0x4000; /* 16KB user heap */
+    __user_heap_end = .;
+
+    /* Kernel heap follows user heap */
     __heap_start = .;
     /* Reserve 4KB at top of RAM for MSP/interrupt stack to avoid heap/stack collision */
     . = _estack - 0x1000;

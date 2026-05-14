@@ -32,8 +32,11 @@ add_library(kernel STATIC
     kernel/task.c
     kernel/sched.c
     kernel/alloc.c
+    kernel/user_alloc.c
+    kernel/kobject.c
     kernel/mutex.c
     kernel/semaphore.c
+    kernel/syscall_stubs.c
     kernel/libc_stubs.c
     kernel/queue.c
 )
@@ -56,6 +59,7 @@ target_link_libraries(kernel PUBLIC crest_cpu)
 add_library(arch STATIC
     arch/${CREST_ARCH}/port.c
     arch/${CREST_ARCH}/context_switch.c
+    arch/${CREST_ARCH}/syscall.c
 )
 
 target_include_directories(arch

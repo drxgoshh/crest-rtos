@@ -81,6 +81,22 @@ static uint32_t *stack_init(uint8_t *stack_base, uint32_t stack_size,
     return sp; /* PendSV handler will LDMIA from here */
 }
 
+/* Round up to next power-of-two with minimum 32 bytes (Cortex-M MPU granularity).
+ * Used to size/align task stacks so they can be represented by a single MPU region. */
+static uint32_t next_power_of_two(uint32_t v)
+{
+    if (v == 0) return 32;
+    if (v <= 32) return 32;
+    v--;                    
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    v++;
+    return v;
+}
+
 /* ------------------------------------------------------------------ */
 /* Task lifecycle                                                        */
 /* ------------------------------------------------------------------ */
@@ -94,17 +110,23 @@ void task_create(void (*task_function)(void *), const char *name,
     struct TaskControlBlock *tcb = get_free_tcb();
     if (!tcb) return;
 
-    size_t alloc_size = stack_size + PORT_STACK_GUARD_SIZE + (PORT_STACK_GUARD_SIZE - 1);
+    /* Round stack to power-of-two and align stack_base to that size so
+     * the MPU can map the stack as a single region. Keep an immediate
+     * guard region below the stack to catch overflows. */
+    uint32_t alloc_stack_size = next_power_of_two(stack_size);
+
+    size_t alloc_size = (size_t)alloc_stack_size + PORT_STACK_GUARD_SIZE + (alloc_stack_size - 1);
     void *alloc = malloc(alloc_size);
     if (!alloc) {
         free_tcb(tcb);
         return;
     }
 
-    /* find a guard-aligned slot inside alloc */
+    /* choose stack_base such that it's aligned to alloc_stack_size and
+     * there is a PORT_STACK_GUARD_SIZE region immediately below it */
     uintptr_t a = (uintptr_t)alloc;
-    uintptr_t guard_base = (a + (PORT_STACK_GUARD_SIZE - 1)) & ~(uintptr_t)(PORT_STACK_GUARD_SIZE - 1);
-    uint8_t *stack_base = (uint8_t *)(guard_base + PORT_STACK_GUARD_SIZE); /* usable stack start */
+    uintptr_t stack_base_addr = (a + PORT_STACK_GUARD_SIZE + (alloc_stack_size - 1)) & ~(uintptr_t)(alloc_stack_size - 1);
+    uint8_t *stack_base = (uint8_t *)stack_base_addr;
 
     /* Write canary at the bottom of the allocation (lowest address).
      * A stack overflow that grows downward will eventually clobber this word.
@@ -114,8 +136,8 @@ void task_create(void (*task_function)(void *), const char *name,
     memset(tcb, 0, sizeof(*tcb));
     tcb->stack_base    = stack_base;
     tcb->stack_alloc   = alloc;
-    tcb->stack_size    = stack_size;
-    tcb->stack_pointer = stack_init(stack_base, stack_size, task_function, arg);
+    tcb->stack_size    = alloc_stack_size; /* actual mapped size (power-of-two) */
+    tcb->stack_pointer = stack_init(stack_base, alloc_stack_size, task_function, arg);
     tcb->state         = TASK_READY;
     tcb->priority      = priority;
     tcb->task_function = task_function;
@@ -149,7 +171,7 @@ void task_yield(void)
     port_trigger_pendsv();
 }
 
-void task_delay(uint32_t ticks)
+void z_impl_task_delay(uint32_t ticks)
 {
     if (ticks == 0) return;
     struct TaskControlBlock *cur = scheduler_get_current();

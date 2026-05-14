@@ -54,3 +54,14 @@ typedef struct {
 #endif
 #define MPU_CTRL_ENABLE     (1u << 0)  /* MPU enable                 */
 #define MPU_CTRL_PRIVDEFENA (1u << 2)  /* Privileged default map     */
+/* MPU RASR AP (Access Permission) encodings (field bits[26:24])
+ * Values correspond to ARMv7-M AP field:
+ * 0 = no access
+ * 1 = priv RW, user no access
+ * 2 = priv RW, user RO
+ * 3 = priv RW, user RW
+ */
+#define MPU_AP_NO_ACCESS       0u
+#define MPU_AP_PRIV_RW_USER_NO 1u
+#define MPU_AP_PRIV_RW_USER_RO 2u
+#define MPU_AP_PRIV_RW_USER_RW 3u
