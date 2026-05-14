@@ -19,11 +19,9 @@ extern void PendSV_Handler(void);
 
 
 void systick_init(void) {
-    SYST_RVR = 16000 - 1;   // 16MHz HSI / 1000 = 16000 ticks per ms
-    SYST_CVR = 0;            // clear current value, forces reload
-    SYST_CSR = (1 << 2)      // clock source = processor clock
-             | (1 << 1)      // enable interrupt
-             | (1 << 0);     // enable SysTick
+    SYST_RVR = 16000 - 1;
+    SYST_CVR = 0;
+    SYST_CSR = SYST_CSR_CLKSOURCE | SYST_CSR_TICKINT | SYST_CSR_ENABLE;
 }
 
 void Reset_Handler(void) {
@@ -41,20 +39,27 @@ void Reset_Handler(void) {
     }
 
     /* Enable FPU (CP10/CP11 full access) — required for -mfloat-abi=hard */
-    *(volatile uint32_t *)0xE000ED88 |= (0xFu << 20);
+    SCB_CPACR |= SCB_CPACR_FPU_FULL;
     __asm volatile ("dsb" ::: "memory");
     __asm volatile ("isb" ::: "memory");
 
-    systick_init();
+    /* Enable MemManage fault handler — without this MPU violations
+     * escalate directly to HardFault. */
+    SCB_SHCSR |= SCB_SHCSR_MEMFAULTENA;
+
+    /* SysTick reload/value setup moved to port_start_first_task so the
+     * kernel can configure MPU and task stacks before enabling the
+     * SysTick interrupt. */
     main();
 
     while (1) {}
 }
 
 extern void uart_write(const char *s);
+extern void stack_overflow_handler(struct TaskControlBlock *tcb) __attribute__((noreturn));
 
 void Default_Handler(void) {
-    /* Dump fault info for debugging */
+    /* Generic fault dump */
     uart_write("HARD FAULT!\n");
 
     /* Determine which stack pointer (MSP/PSP) holds the stacked registers */
@@ -85,18 +90,18 @@ void Default_Handler(void) {
     }
 
     /* Fault status registers */
-    uint32_t cfsr = (*(volatile uint32_t *)0xE000ED28);
-    uint32_t hfsr = (*(volatile uint32_t *)0xE000ED2C);
-    uint32_t mmfar = (*(volatile uint32_t *)0xE000ED34);
-    uint32_t bfar = (*(volatile uint32_t *)0xE000ED38);
+    uint32_t cfsr = SCB_CFSR;
+    uint32_t hfsr = SCB_HFSR;
+    uint32_t mmfar = SCB_MMFAR;
+    uint32_t bfar = SCB_BFAR;
     snprintf(buf, sizeof(buf), "CFSR=0x%lx HFSR=0x%lx MMFAR=0x%lx BFAR=0x%lx\n",
              (unsigned long)cfsr, (unsigned long)hfsr,
              (unsigned long)mmfar, (unsigned long)bfar);
     uart_write(buf);
 
-    struct TaskControlBlock *cur = scheduler_get_current();
-    if (cur) {
-        snprintf(buf, sizeof(buf), "Current task: %s\n SP(%p)\n", cur->name, (void *)cur->stack_pointer);
+    struct TaskControlBlock *fault_task = scheduler_get_current();
+    if (fault_task) {
+        snprintf(buf, sizeof(buf), "Current task: %s\n SP(%p)\n", fault_task->name, (void *)fault_task->stack_pointer);
         uart_write(buf);
     } else {
         uart_write("No current task\n");
@@ -105,6 +110,26 @@ void Default_Handler(void) {
     while (1) {
         __asm volatile ("bkpt #0");
     }
+}
+
+/* MemManage fault — MPU access violation.
+ * Fires when a task writes to the NO-ACCESS guard region below its stack.
+ * If the CPU can push the exception frame (small overflow), we land here.
+ * If it cannot (deep overflow, PSP in guard), it escalates to HardFault. */
+
+void MemManage_Handler(void) {
+    uint32_t psp;
+    __asm volatile ("mrs %0, psp" : "=r" (psp));
+    struct TaskControlBlock *cur = scheduler_get_current();
+
+    if (cur && (uintptr_t)psp < (uintptr_t)cur->stack_base) {
+        cur->stack_pointer = (uint32_t *)psp;
+        stack_overflow_handler(cur);
+    }
+
+    /* MPU violation not caused by stack overflow */
+    uart_write("[CREST] MemManage fault (MPU violation)\r\n");
+    while (1) { __asm volatile ("bkpt #0"); }
 }
 
 void SysTick_Handler(void) {
@@ -119,7 +144,7 @@ __attribute__((section(".isr_vector"))) void (* const vector_table[])(void) = {
     Reset_Handler,
     Default_Handler,            /* NMI                          */
     Default_Handler,            /* HardFault                    */
-    Default_Handler,            /* MemManage                    */
+    MemManage_Handler,          /* MemManage (MPU violation)    */
     Default_Handler,            /* BusFault                     */
     Default_Handler,            /* UsageFault                   */
     0, 0, 0, 0,                 /* reserved                     */

@@ -15,22 +15,24 @@
 
 #include "task.h"
 
-/*
- * sched_init — clear all scheduler state (called once from task_init).
- */
-void sched_init(void);
+extern uint8_t g_priority_mask; /* bitmask of priorities with ready tasks */
 
 /*
- * sched_add_task — insert a TCB into the ready list for its priority.
+ * scheduler_init — clear all scheduler state (called once from task_init).
+ */
+void scheduler_init(void);
+
+/*
+ * scheduler_add_task — insert a TCB into the ready list for its priority.
  * Called by task_create after the TCB is fully initialised.
  */
-void sched_add_task(struct TaskControlBlock *tcb);
+void scheduler_add_task(struct TaskControlBlock *tcb);
 
 /*
  * sched_remove_task — remove a TCB from its priority list.
  * Called by task_delete before the TCB/stack are freed.
  */
-void sched_remove_task(struct TaskControlBlock *tcb);
+void scheduler_remove_task(struct TaskControlBlock *tcb);
 
 /*
  * scheduler_get_next — pick the next READY task to run.
@@ -43,7 +45,9 @@ struct TaskControlBlock *scheduler_get_next(void);
 
 /* Current-task accessors — used by port layer and sync primitives. */
 struct TaskControlBlock *scheduler_get_current(void);
-void                     scheduler_set_current(struct TaskControlBlock *tcb);
+
+/* Set the current task (used by port layer and sync primitives). */
+void scheduler_set_current(struct TaskControlBlock *tcb);
 
 /*
  * scheduler_tick — age delay counters and wake tasks whose delay expired.
@@ -55,8 +59,10 @@ void scheduler_tick(void);
 uint32_t scheduler_get_tick_count(void);
 
 /* Get the priority of the first ready task (lowest number = highest priority). */
-uint8_t sched_get_first_ready_priority(void);
+uint8_t scheduler_get_first_ready_priority(void);
 
-extern uint8_t g_priority_mask; /* bitmask of priorities with ready tasks */
+/* Sleep a task for ticks ms: removes it from the ready list and parks it
+ * on an internal delay list. scheduler_tick() re-adds it when done. */
+void scheduler_sleep(struct TaskControlBlock *tcb, uint32_t ticks);
 
 #endif /* CREST_SCHED_H */

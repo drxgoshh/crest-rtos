@@ -6,11 +6,20 @@
 #include "task.h"
 #include "sched.h"
 
+struct mutex {
+    struct TaskControlBlock *owner;     /* task currently holding the mutex, NULL if free */
+    struct TaskControlBlock *wait_list; /* singly-linked list of waiting tasks (via ->next) */
+};
 
-void mutex_init(mutex_t *m)
+mutex_t* mutex_create(void)
 {
+    mutex_t *m = (mutex_t *)malloc(sizeof(mutex_t));
+    if (m == NULL) {
+        return NULL;
+    }
     m->owner = NULL;
     m->wait_list = NULL;
+    return m;
 }
 
 void mutex_lock(mutex_t *m)

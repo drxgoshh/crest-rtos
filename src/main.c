@@ -7,6 +7,7 @@
 #include "libc_stubs.h"
 #include "mutex.h"
 #include "queue.h"
+#include "sched.h"
 
 
 void crest_boot_banner(void) {
@@ -37,29 +38,31 @@ static void idle_task(void *arg) {
 
 static void task1(void *arg) {
     (void)arg;
-    while (1) {
-        task_delay(500); /* simulate some work without blocking the scheduler */
-    }
+    uart_write("Task1:\r\n");
+    task_delay(500);
+    /* task functions must never return — loop forever if done */
+    while (1) task_delay(1000);
 }
 
 static void task2(void *arg) {
     (void)arg;
     while (1) {
-        task_delay(500); /* simulate some work without blocking the scheduler */
-    }
+        uart_write("Task2\r\n");
+        task_delay(500);
+    } 
 }
 
 int main(void) {
     uart_init();    // Initialize UART for logging
-    my_queue = queue_create(sizeof(int), 10); // Create and initialize the queue
     crest_boot_banner(); // Print boot banner
     
     task_init(); // Initialize task subsystem
     uart_write("Creating tasks...\n");
-    task_create(idle_task,   "Idle",   7, 256, NULL); /* lowest priority idle */
-    task_create(task1, "Task1", 0, 512, NULL);
-    task_create(task2, "Task2", 1, 512, NULL);
+    task_create(idle_task,   "Idle",   7, 512, NULL); /* lowest priority idle */
+    task_create(task1, "Task1", 1, 512, NULL);
+    task_create(task2, "Task2", 3, 512, NULL);
     uart_write("Scheduler started\n");
+
     port_start_first_task(); // Start the scheduler and run the first task
 
 

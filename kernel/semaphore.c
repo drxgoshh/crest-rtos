@@ -5,12 +5,22 @@
 #include <stdint.h>
 #include "task.h"
 #include "sched.h"
+#include "alloc.h"
 
+struct semaphore{
+    int count;                          /* current count (>= 0) */
+    struct TaskControlBlock *wait_list; /* tasks blocked in sem_wait() */
+};
 
-void sem_init(semaphore_t *s, int initial_count)
+semaphore_t *sem_create(int initial_count)
 {
+    semaphore_t *s = (semaphore_t *)malloc(sizeof(semaphore_t));
+    if (s == NULL) {
+        return NULL;
+    }
     s->count = (initial_count >= 0) ? initial_count : 0;
     s->wait_list = NULL;
+    return s;
 }
 
 void sem_take(semaphore_t *s)

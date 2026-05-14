@@ -61,6 +61,7 @@ add_library(arch STATIC
 target_include_directories(arch
     PUBLIC  arch/${CREST_ARCH}
     PRIVATE kernel/include
+            ${CREST_BOARD_INCLUDES}
 )
 
 target_compile_options(arch PRIVATE

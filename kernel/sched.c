@@ -1,9 +1,10 @@
 #include "sched.h"
+#include "port.h"
 #include "isr.h"
 #include <string.h>
 #include <stdint.h>
 #include "queue.h"
-
+#include "../boards/stm32f446/uart.h"
 /*
  * Per-priority task lists.  All tasks at a given priority live in a
  * singly-linked list whose head is task_list[priority].  Tasks are never
@@ -33,22 +34,33 @@ extern queue_t* g_queue_list; /* global list of all queues for cleanup (not impl
 
 /* ------------------------------------------------------------------ */
 
-uint8_t sched_get_first_ready_priority(void)
+uint8_t scheduler_get_first_ready_priority(void)
 {
-    return __builtin_ctz(g_priority_mask); /* find index of least significant set bit */
+    if (g_priority_mask == 0) return MAX_TASK_PRIORITIES; /* no ready tasks */
+    return __builtin_ctz(g_priority_mask);
 }
 
 
-void sched_init(void)
+void scheduler_init(void)
 {
     memset(task_list,  0, sizeof(task_list));
     memset(rr_current, 0, sizeof(rr_current));
     g_priority_mask = 0;
-
     current_task = NULL;
 }
 
-void sched_add_task(struct TaskControlBlock *tcb)
+/* Put a task to sleep for ticks milliseconds.
+ * Task stays in its priority list — scheduler_get_next skips TASK_WAITING.
+ * scheduler_tick() wakes it when delay_ticks reaches zero. */
+void scheduler_sleep(struct TaskControlBlock *tcb, uint32_t ticks)
+{
+    uint32_t pm = enter_critical();
+    tcb->delay_ticks = ticks;
+    tcb->state       = TASK_WAITING;
+    exit_critical(pm);
+}
+
+void scheduler_add_task(struct TaskControlBlock *tcb)
 {
     uint32_t pm = enter_critical();
     tcb->next = task_list[tcb->priority];
@@ -58,7 +70,7 @@ void sched_add_task(struct TaskControlBlock *tcb)
     exit_critical(pm);
 }
 
-void sched_remove_task(struct TaskControlBlock *tcb)
+void scheduler_remove_task(struct TaskControlBlock *tcb)
 {
     uint32_t pm = enter_critical();
 
@@ -104,23 +116,24 @@ struct TaskControlBlock *scheduler_get_next(void)
 {
     uint32_t pm = enter_critical();
 
-    uint8_t pr = sched_get_first_ready_priority(); /* find index of least significant set bit */
+    /* Scan all priorities in order (0 = highest). Tasks may be WAITING
+     * at any priority, so we cannot rely on g_priority_mask alone. */
+    for (uint8_t pr = 0; pr < MAX_TASK_PRIORITIES; pr++) {
+        struct TaskControlBlock *list = task_list[pr];
+        if (!list) continue;
 
-    if (pr < MAX_TASK_PRIORITIES) {
-        struct TaskControlBlock *t = rr_current[pr];
-        if (!t) t = task_list[pr]; /* start from head if cursor is NULL */
-
-        struct TaskControlBlock *start = t; /* remember where we started */
+        /* Round-robin: start from the node after the last one selected. */
+        struct TaskControlBlock *start = rr_current[pr] ? rr_current[pr] : list;
+        struct TaskControlBlock *t = start;
         do {
             if (t->state == TASK_READY) {
-                rr_current[pr] = t->next ? t->next : task_list[pr];
+                rr_current[pr] = t->next ? t->next : list;
                 exit_critical(pm);
                 return t;
             }
-            t = t->next ? t->next : task_list[pr];
+            t = t->next ? t->next : list;
         } while (t != start);
     }
-
 
     exit_critical(pm);
     return NULL;
@@ -155,23 +168,19 @@ uint32_t scheduler_get_tick_count(void)
 void scheduler_tick(void)
 {
     tick_count++;
-    /* Decrement from TCB list */
+
+    /* Walk every priority list and decrement sleeping tasks.          *
+     * Tasks stay in the list; only their state changes.              */
     for (uint8_t pr = 0; pr < MAX_TASK_PRIORITIES; pr++) {
-        struct TaskControlBlock *t = task_list[pr];
-        while (t) {
-            uint32_t pm = enter_critical();
+        for (struct TaskControlBlock *t = task_list[pr]; t; t = t->next) {
             if (t->state == TASK_WAITING && t->delay_ticks > 0) {
                 if (--t->delay_ticks == 0) {
                     t->state = TASK_READY;
-                    g_priority_mask |= (1 << t->priority); /* mask priority has a ready task */
                 }
             }
-            exit_critical(pm);
-            t = t->next;
         }
     }
 
-    /* Decrement from queue wait lists */
+    /* Decrement timeouts on queue wait lists */
     queue_tick_all();
-
 }

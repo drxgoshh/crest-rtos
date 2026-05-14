@@ -3,8 +3,11 @@
 #include "port.h"
 #include "alloc.h"
 #include "isr.h"
+#include "../boards/stm32f446/uart.h"
 #include <string.h>
 #include <stdint.h>
+
+extern uint8_t g_priority_mask; /* bitmask of priorities with ready tasks */
 
 /* ------------------------------------------------------------------ */
 /* TCB pool — fixed-size static allocation                             */
@@ -45,7 +48,7 @@ void task_init(void)
 {
     memset(tcb_pool, 0, sizeof(tcb_pool));
     memset(tcb_used, 0, sizeof(tcb_used));
-    sched_init();
+    scheduler_init();
 }
 
 /* ------------------------------------------------------------------ */
@@ -91,11 +94,26 @@ void task_create(void (*task_function)(void *), const char *name,
     struct TaskControlBlock *tcb = get_free_tcb();
     if (!tcb) return;
 
-    uint8_t *stack_base = (uint8_t *)malloc(stack_size);
-    if (!stack_base) { free_tcb(tcb); return; }
+    size_t alloc_size = stack_size + PORT_STACK_GUARD_SIZE + (PORT_STACK_GUARD_SIZE - 1);
+    void *alloc = malloc(alloc_size);
+    if (!alloc) {
+        free_tcb(tcb);
+        return;
+    }
+
+    /* find a guard-aligned slot inside alloc */
+    uintptr_t a = (uintptr_t)alloc;
+    uintptr_t guard_base = (a + (PORT_STACK_GUARD_SIZE - 1)) & ~(uintptr_t)(PORT_STACK_GUARD_SIZE - 1);
+    uint8_t *stack_base = (uint8_t *)(guard_base + PORT_STACK_GUARD_SIZE); /* usable stack start */
+
+    /* Write canary at the bottom of the allocation (lowest address).
+     * A stack overflow that grows downward will eventually clobber this word.
+     * Checked on every context switch in port_switch_context(). */
+    *((volatile uint32_t *)alloc) = 0xDEADBEEFU;
 
     memset(tcb, 0, sizeof(*tcb));
     tcb->stack_base    = stack_base;
+    tcb->stack_alloc   = alloc;
     tcb->stack_size    = stack_size;
     tcb->stack_pointer = stack_init(stack_base, stack_size, task_function, arg);
     tcb->state         = TASK_READY;
@@ -107,14 +125,18 @@ void task_create(void (*task_function)(void *), const char *name,
         tcb->name[TASK_NAME_MAX_LEN - 1] = '\0';
     }
 
-    sched_add_task(tcb);
+    scheduler_add_task(tcb);
 }
 
 void task_delete(struct TaskControlBlock *tcb)
 {
     if (!tcb) return;
-    sched_remove_task(tcb);
-    if (tcb->stack_base) free(tcb->stack_base);
+    scheduler_remove_task(tcb);
+    if (tcb->stack_alloc){
+        free(tcb->stack_alloc);
+        tcb->stack_alloc = NULL;
+        tcb->stack_base = NULL;
+    }
     free_tcb(tcb);
 }
 
@@ -133,11 +155,6 @@ void task_delay(uint32_t ticks)
     struct TaskControlBlock *cur = scheduler_get_current();
     if (!cur) return;
 
-    uint32_t pm = enter_critical();
-    cur->delay_ticks = ticks;
-    cur->state       = TASK_WAITING;
-    g_priority_mask &= ~(1 << cur->priority); /* clear mask bit for this priority */
-    exit_critical(pm);
-
-    port_trigger_pendsv();
+    scheduler_sleep(cur, ticks);
+    port_trigger_pendsv();       /* yield to next ready task */
 }

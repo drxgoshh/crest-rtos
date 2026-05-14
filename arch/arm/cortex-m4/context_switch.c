@@ -4,6 +4,9 @@
 #include "critical.h"
 #include <stdint.h>
 
+#define STACK_CANARY 0xDEADBEEFU
+extern void uart_write(const char *s);
+
 /* C helper called from the PendSV assembly wrapper.
  * - input: r0 = pointer to process stack (PSP) after pushing R4-R11
  * - return: r0 = pointer to new process stack (PSP) for the next task (after R4-R11 area)
@@ -17,6 +20,13 @@ uint32_t *port_switch_context(uint32_t *old_sp)
 		 * Tasks blocked via task_delay/mutex/semaphore are already
 		 * TASK_WAITING — their state must not be overwritten here. */
 		if (cur->state == TASK_RUNNING) cur->state = TASK_READY;
+
+		/* Stack overflow check: the saved SP must still be >= stack_base.
+		 * If it went below, the stack has already overflowed.
+		 * This catches overflows of any size on every context switch. */
+		if ((uintptr_t)cur->stack_pointer < (uintptr_t)cur->stack_base) {
+			stack_overflow_handler(cur); /* prints diagnostic, halts */
+		}
 	}
 
 	struct TaskControlBlock *next = scheduler_get_next();
@@ -28,6 +38,10 @@ uint32_t *port_switch_context(uint32_t *old_sp)
 	}
 
 	next->state = TASK_RUNNING;
+	/* Configure MPU for the new task's memory regions if enabled. */
+#if PORT_USE_MPU
+	port_mpu_configure_for_task(next);
+#endif
 	scheduler_set_current(next);
 	return next->stack_pointer;
 }
