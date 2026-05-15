@@ -19,7 +19,4 @@ int queue_push(uint32_t handle, const void *item, uint32_t timeout_ms);
  */
 int queue_pop(uint32_t handle, void *item, uint32_t timeout_ms);
 
-/* Called from the system tick to age queue wait lists (internal). */
-void queue_tick_all(void);
-
 #endif /* CREST_QUEUE_H */

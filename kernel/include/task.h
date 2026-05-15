@@ -11,12 +11,17 @@
 typedef enum {
     TASK_READY = 0,
     TASK_RUNNING,
-    TASK_WAITING,   /* sleeping via task_delay() */
+    TASK_WAITING,   /* sleeping (task_delay) or blocked on a primitive wait list */
     TASK_SUSPENDED
 } task_state_t;
 
 
-#define TASK_FLAG_USER (1u << 0) /* task should run in unprivileged mode */
+#define TASK_FLAG_USER        (1u << 0) /* task should run in unprivileged mode */
+#define TASK_FLAG_SVC_BLOCKED (1u << 1) /* blocked via SVC path; result goes to saved R0 */
+#define TASK_FLAG_TIMED_OUT   (1u << 2) /* set by sync_tick_all on timeout (privileged path) */
+
+/* Pass as timeout_ms to block indefinitely (never time out). */
+#define CREST_WAIT_FOREVER    (0xFFFFFFFFu)
 
 
 /* Task Control Block (TCB) */
@@ -35,6 +40,8 @@ struct TaskControlBlock {
     struct TaskControlBlock *next;         /* singly-linked per-priority list */
     struct TaskControlBlock *wait_next;    /* singly-linked queue wait list (separate from next) */
     uint32_t delay_ticks;                  /* ticks remaining when blocked */
+    struct TaskControlBlock **blocking_wait_list; /* ptr to wait-list head of the primitive we are blocking on;
+                                                   * NULL if not on a primitive wait list or WAIT_FOREVER */
     void (*task_function)(void*);          /* entry function */
     void* arg;
 };

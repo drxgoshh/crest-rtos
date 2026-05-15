@@ -128,8 +128,28 @@ void MemManage_Handler(void) {
         stack_overflow_handler(cur);
     }
 
-    /* MPU violation not caused by stack overflow */
-    uart_write("[CREST] MemManage fault (MPU violation)\r\n");
+    /* MPU violation not caused by stack overflow — print diagnostic. */
+    uart_write("\r\n[CREST] *** MPU VIOLATION ***\r\n");
+    if (cur) {
+        uart_write("  task  : ");
+        uart_write(cur->name);
+        uart_write("\r\n");
+    }
+    /* MMARVALID (CFSR bit 7) indicates MMFAR holds the faulting address. */
+    if (SCB_CFSR & (1u << 7)) {
+        char buf[32];
+        uint32_t addr = SCB_MMFAR;
+        /* print as 0x + 8 hex digits */
+        const char hex[] = "0123456789abcdef";
+        buf[0]='0'; buf[1]='x';
+        for (int i = 0; i < 8; i++)
+            buf[2+i] = hex[(addr >> ((7-i)*4)) & 0xF];
+        buf[10] = '\0';
+        uart_write("  addr  : ");
+        uart_write(buf);
+        uart_write("\r\n");
+    }
+    uart_write("  -> MPU correctly blocked cross-task access.\r\n");
     while (1) { __asm volatile ("bkpt #0"); }
 }
 

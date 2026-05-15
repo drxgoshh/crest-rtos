@@ -36,9 +36,10 @@ add_library(kernel STATIC
     kernel/kobject.c
     kernel/mutex.c
     kernel/semaphore.c
-    kernel/syscall_stubs.c
+    kernel/syscall_api.c
     kernel/libc_stubs.c
     kernel/queue.c
+    kernel/kwork.c
 )
 
 target_include_directories(kernel

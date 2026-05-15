@@ -3,7 +3,6 @@
 #include "isr.h"
 #include <string.h>
 #include <stdint.h>
-#include "queue.h"
 #include "../boards/stm32f446/uart.h"
 /*
  * Per-priority task lists.  All tasks at a given priority live in a
@@ -27,8 +26,6 @@ static struct TaskControlBlock *current_task = NULL;
 static volatile uint32_t tick_count = 0;
 
 uint8_t g_priority_mask = 0; /* bitmask of priorities with at least one READY task */
-
-extern queue_t* g_queue_list; /* global list of all queues for cleanup (not implemented) */
 
 
 
@@ -58,6 +55,29 @@ void scheduler_sleep(struct TaskControlBlock *tcb, uint32_t ticks)
     tcb->delay_ticks = ticks;
     tcb->state       = TASK_WAITING;
     exit_critical(pm);
+}
+
+/*
+ * scheduler_wake_task — write the result to the saved exception frame if the
+ * task was blocked via the SVC path, then move it to TASK_READY and trigger
+ * a context switch.
+ *
+ * Stack layout after PendSV saves callee-saved registers (context_switch.c):
+ *   tcb->stack_pointer → [R4, R5, R6, R7, R8, R9, R10, R11]   (8 words, indices 0..7)
+ *                         [R0, R1, R2, R3, R12, LR, PC, xPSR]  (8 words, indices 8..15)
+ *
+ * tcb->stack_pointer[8] is the stacked R0 — the SVC return value.
+ */
+void scheduler_wake_task(struct TaskControlBlock *tcb, uint32_t result)
+{
+    uint32_t pm = enter_critical();
+    if (tcb->flags & TASK_FLAG_SVC_BLOCKED) {
+        tcb->stack_pointer[8] = result;
+        tcb->flags &= ~TASK_FLAG_SVC_BLOCKED;
+    }
+    tcb->state = TASK_READY;
+    exit_critical(pm);
+    port_trigger_pendsv();
 }
 
 void scheduler_add_task(struct TaskControlBlock *tcb)
@@ -165,15 +185,54 @@ uint32_t scheduler_get_tick_count(void)
     return tick_count;
 }
 
+/*
+ * sync_tick_all — walk all tasks blocking on a primitive wait list (semaphore,
+ * mutex, or queue) with a finite timeout.  On expiry: splice the task out of
+ * the wait list, set TASK_FLAG_TIMED_OUT (privileged path reads this), and
+ * call scheduler_wake_task() so the SVC path gets -1 written to saved R0.
+ */
+static void sync_tick_all(void)
+{
+    for (uint8_t pr = 0; pr < MAX_TASK_PRIORITIES; pr++) {
+        for (struct TaskControlBlock *t = task_list[pr]; t; t = t->next) {
+            uint32_t pm = enter_critical();
+            if (t->state == TASK_WAITING &&
+                t->delay_ticks > 0 &&
+                t->blocking_wait_list != NULL) {
+                if (--t->delay_ticks == 0) {
+                    /* Splice out of the primitive's wait list. */
+                    struct TaskControlBlock **head = t->blocking_wait_list;
+                    struct TaskControlBlock *cur = *head, *prev = NULL;
+                    while (cur && cur != t) { prev = cur; cur = cur->wait_next; }
+                    if (cur == t) {
+                        if (prev) prev->wait_next = t->wait_next;
+                        else      *head           = t->wait_next;
+                        t->wait_next = NULL;
+                    }
+                    t->blocking_wait_list = NULL;
+                    t->flags |= TASK_FLAG_TIMED_OUT; /* signal privileged caller */
+                    exit_critical(pm);
+                    scheduler_wake_task(t, (uint32_t)-1); /* writes -1 to SVC frame */
+                    continue;
+                }
+            }
+            exit_critical(pm);
+        }
+    }
+}
+
 void scheduler_tick(void)
 {
     tick_count++;
 
-    /* Walk every priority list and decrement sleeping tasks.          *
-     * Tasks stay in the list; only their state changes.              */
+    /* Walk every priority list and decrement sleeping tasks.
+     * Tasks blocked on a primitive wait list are handled by sync_tick_all()
+     * below; skip them here so we do not double-decrement or race. */
     for (uint8_t pr = 0; pr < MAX_TASK_PRIORITIES; pr++) {
         for (struct TaskControlBlock *t = task_list[pr]; t; t = t->next) {
-            if (t->state == TASK_WAITING && t->delay_ticks > 0) {
+            if (t->state == TASK_WAITING &&
+                t->delay_ticks > 0 &&
+                t->blocking_wait_list == NULL) {
                 if (--t->delay_ticks == 0) {
                     t->state = TASK_READY;
                 }
@@ -181,6 +240,6 @@ void scheduler_tick(void)
         }
     }
 
-    /* Decrement timeouts on queue wait lists */
-    queue_tick_all();
+    /* Decrement timeouts on semaphore / mutex / queue wait lists */
+    sync_tick_all();
 }

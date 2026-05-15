@@ -65,4 +65,16 @@ uint8_t scheduler_get_first_ready_priority(void);
  * on an internal delay list. scheduler_tick() re-adds it when done. */
 void scheduler_sleep(struct TaskControlBlock *tcb, uint32_t ticks);
 
+/*
+ * scheduler_wake_task — wake a task blocked via the SVC path.
+ *
+ * If TASK_FLAG_SVC_BLOCKED is set on the task, the result value is written
+ * to tcb->stack_pointer[8] (the stacked R0 in the hardware exception frame)
+ * so the task resumes with the correct return value in R0.
+ *
+ * The flag is cleared and the task is moved back to TASK_READY.  PendSV is
+ * triggered so the scheduler can pick up the newly-ready task.
+ */
+void scheduler_wake_task(struct TaskControlBlock *tcb, uint32_t result);
+
 #endif /* CREST_SCHED_H */

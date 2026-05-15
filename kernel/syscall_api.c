@@ -1,4 +1,4 @@
-/* syscall_stubs.c
+/* syscall_api.c
  * User-facing kernel API wrappers. Each stub checks privilege at runtime:
  *   privileged   → call z_impl_* directly
  *   unprivileged → trap via SVC; handler validates handle + dispatches
@@ -19,10 +19,10 @@ extern queue_t  *z_impl_queue_create(uint32_t item_size, uint32_t size);
 extern int       z_impl_queue_push(queue_t *q, const void *item, uint32_t ms);
 extern int       z_impl_queue_pop(queue_t *q, void *item, uint32_t ms);
 extern mutex_t  *z_impl_mutex_create(void);
-extern void      z_impl_mutex_lock(mutex_t *m);
+extern int       z_impl_mutex_lock_timeout(mutex_t *m, uint32_t timeout_ms);
 extern void      z_impl_mutex_unlock(mutex_t *m);
 extern semaphore_t *z_impl_sem_create(int initial_count);
-extern void      z_impl_sem_take(semaphore_t *s);
+extern int       z_impl_sem_take_timeout(semaphore_t *s, uint32_t timeout_ms);
 extern void      z_impl_sem_give(semaphore_t *s);
 
 /* ── k_uart_write — safe from unprivileged mode ─────────────────────────── */
@@ -107,15 +107,16 @@ void sem_give(uint32_t handle)
     }
 }
 
-void sem_take(uint32_t handle)
+int sem_take(uint32_t handle, uint32_t timeout_ms)
 {
     if (port_is_privileged()) {
         semaphore_t *s = k_obj_get(handle, KOBJ_SEM);
-        if (s) z_impl_sem_take(s);
-    } else {
-        (void)port_syscall_invoke(SYSCALL_SEM_WAIT,
-                                  (unsigned int)handle, 0, 0, 0);
+        if (!s) return -1;
+        return z_impl_sem_take_timeout(s, timeout_ms);
     }
+    return (int)port_syscall_invoke(SYSCALL_SEM_WAIT,
+                                    (unsigned int)handle,
+                                    (unsigned int)timeout_ms, 0, 0);
 }
 
 /* ── mutex ───────────────────────────────────────────────────────────────── */
@@ -129,15 +130,16 @@ uint32_t mutex_create(void)
     return (uint32_t)port_syscall_invoke(SYSCALL_MUTEX_CREATE, 0, 0, 0, 0);
 }
 
-void mutex_lock(uint32_t handle)
+int mutex_lock(uint32_t handle, uint32_t timeout_ms)
 {
     if (port_is_privileged()) {
         mutex_t *m = k_obj_get(handle, KOBJ_MUTEX);
-        if (m) z_impl_mutex_lock(m);
-    } else {
-        (void)port_syscall_invoke(SYSCALL_MUTEX_LOCK,
-                                  (unsigned int)handle, 0, 0, 0);
+        if (!m) return -1;
+        return z_impl_mutex_lock_timeout(m, timeout_ms);
     }
+    return (int)port_syscall_invoke(SYSCALL_MUTEX_LOCK,
+                                    (unsigned int)handle,
+                                    (unsigned int)timeout_ms, 0, 0);
 }
 
 void mutex_unlock(uint32_t handle)
